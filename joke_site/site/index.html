@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#020a04">
+<title>SYSTEM//BREACH</title>
+<style>
+  :root { --g:#00ff66; --d:#00330f; --r:#ff2b4a; --bg:#020a04; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--g);
+    font-family:"Consolas","Courier New",monospace; overflow:hidden; }
+  #rain { position:fixed; inset:0; opacity:.35; }
+  .scan { position:fixed; inset:0; pointer-events:none;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0 1px,transparent 1px 3px); }
+  .wrap { position:relative; z-index:2; height:100%; display:flex; align-items:center; justify-content:center; padding:16px; }
+  .box { width:min(680px,100%); border:1px solid var(--g); background:rgba(0,12,4,.88);
+    box-shadow:0 0 30px rgba(0,255,102,.35), inset 0 0 30px rgba(0,255,102,.08); padding:28px; text-align:center; }
+  .box.danger { border-color:var(--r); color:var(--r); box-shadow:0 0 40px rgba(255,43,74,.5), inset 0 0 30px rgba(255,43,74,.12); }
+  h1 { margin:0 0 14px; font-size:clamp(26px,6vw,44px); letter-spacing:3px; position:relative; }
+  h1.glitch::before,h1.glitch::after { content:attr(data-t); position:absolute; left:0; right:0; }
+  h1.glitch::before { color:#0ff; transform:translate(2px,0); clip-path:inset(0 0 55% 0); animation:gl 1.6s infinite steps(2); }
+  h1.glitch::after  { color:#f0f; transform:translate(-2px,0); clip-path:inset(55% 0 0 0); animation:gl 1.2s infinite steps(2) reverse; }
+  @keyframes gl { 0%{transform:translate(2px,0)} 50%{transform:translate(-3px,1px)} 100%{transform:translate(1px,-1px)} }
+  p { line-height:1.55; margin:10px 0 22px; }
+  .btns { display:flex; gap:14px; justify-content:center; flex-wrap:wrap; min-height:52px; position:relative; }
+  button { font:inherit; font-size:16px; color:var(--g); background:transparent; border:1px solid var(--g);
+    padding:12px 22px; cursor:pointer; text-transform:uppercase; letter-spacing:1px; transition:.15s; }
+  button:hover { background:var(--g); color:#001a08; box-shadow:0 0 18px var(--g); }
+  .danger button { color:var(--r); border-color:var(--r); }
+  .danger button:hover { background:var(--r); color:#1a0008; box-shadow:0 0 18px var(--r); }
+  button.run { position:fixed; z-index:5; }
+  #term { text-align:left; font-size:14px; height:300px; overflow:hidden; white-space:pre-wrap; }
+  .bar { height:18px; border:1px solid var(--g); margin-top:14px; }
+  .bar i { display:block; height:100%; width:0; background:var(--g); box-shadow:0 0 12px var(--g); }
+  .big { font-size:clamp(56px,16vw,120px); margin:0; line-height:1; }
+  html,body { height:100dvh; width:100%; position:fixed; inset:0; overscroll-behavior:none; touch-action:manipulation;
+    -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  .wrap { padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left)); }
+  @media (max-width:600px) {
+    .box { padding:20px 14px; }
+    h1 { letter-spacing:1px; }
+    p { font-size:15px; }
+    button { font-size:15px; padding:14px 18px; min-height:48px; flex:1 1 40%; }
+    .btns { gap:10px; }
+    #term { font-size:11.5px; height:42dvh; }
+  }
+  @media (max-height:480px) { #term { height:50dvh; } .big { font-size:64px; } }
+  canvas#fx { position:fixed; inset:0; z-index:6; pointer-events:none; }
+  .shake { animation:sh .35s; }
+  @keyframes sh { 25%{transform:translate(-6px,3px)} 50%{transform:translate(6px,-3px)} 75%{transform:translate(-4px,-2px)} }
+  .flash { animation:fl .5s steps(2) infinite; }
+  @keyframes fl { 50%{background:#2a0006} }
+</style>
+</head>
+<body>
+<canvas id="rain"></canvas>
+<div class="scan"></div>
+<div class="wrap"><div class="box" id="box"></div></div>
+<canvas id="fx"></canvas>
+
+<script>
+/* ---------- Matrix rain ---------- */
+const rain = document.getElementById('rain'), rc = rain.getContext('2d');
+let cols, drops;
+function sizeRain(){ rain.width=innerWidth; rain.height=innerHeight; cols=Math.floor(innerWidth/16); drops=Array(cols).fill(0).map(()=>Math.random()*-50); }
+addEventListener('resize', sizeRain); sizeRain();
+setInterval(()=>{
+  rc.fillStyle='rgba(2,10,4,.12)'; rc.fillRect(0,0,rain.width,rain.height);
+  rc.fillStyle='#00ff66'; rc.font='16px monospace';
+  drops.forEach((y,i)=>{
+    rc.fillText(String.fromCharCode(0x30A0+Math.random()*96), i*16, y*16);
+    drops[i] = (y*16>rain.height && Math.random()>.975) ? 0 : y+1;
+  });
+},50);
+
+/* ---------- Sound (чисто WebAudio, без файлов) ---------- */
+let ac;
+function beep(f=440,t=.1,type='square'){
+  try{ ac=ac||new (window.AudioContext||window.webkitAudioContext)();
+    const o=ac.createOscillator(), g=ac.createGain();
+    o.type=type; o.frequency.value=f; g.gain.value=.05;
+    o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime+t);
+  }catch(e){}
+}
+
+/* ---------- Лёгкая статистика прохождения ----------
+   Шлёт на ваш сервер только ход игры: шаг, нажатая кнопка, время.
+   Плюс самое общее: тип экрана и язык. Без IP, отпечатков и личных данных.
+   Укажите адрес своего сервера (принимает POST с form-данными, например вебхук Home Assistant). Пусто — ничего не отправляется.
+   Если сайт лежит на том же домене, что и Home Assistant, достаточно пути: '/api/webhook/ВАШ_ID' */
+const TELEMETRY_URL = '/hook';
+const sid = Math.random().toString(36).slice(2,10), t0 = Date.now();
+function track(event, data={}){
+  if (!TELEMETRY_URL) return;
+  // form-urlencoded: не требует CORS-предзапроса, и Home Assistant отдаёт поля в trigger.data
+  const body = new URLSearchParams({ sid, event, ...data, t:Math.round((Date.now()-t0)/1000) });
+  try{
+    if (navigator.sendBeacon) navigator.sendBeacon(TELEMETRY_URL, body);
+    else fetch(TELEMETRY_URL,{method:'POST',body,keepalive:true,mode:'no-cors'});
+  }catch(e){}
+}
+track('open', { screen:`${screen.width}x${screen.height}`, touch:navigator.maxTouchPoints>0, lang:navigator.language });
+addEventListener('pagehide', ()=>track('leave', { stage }));
+
+/* ---------- Сценарий ---------- */
+const box = document.getElementById('box');
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+let stage = 0, finished = false;
+
+const steps = [
+  { t:'ДОБРО ПОЖАЛОВАТЬ', p:'Вы вошли в защищённую зону.<br><b>Если вы продолжите, ваше устройство будет заражено.</b>',
+    b:[['Продолжить','next'],['Уйти отсюда','next']] },
+  { t:'⚠ ВНИМАНИЕ', p:'Вирус <b>TROJAN.FUNNY.EXE</b> готов к установке.<br>Вы уверены, что хотите продолжить?',
+    b:[['Да, уверена','next'],['Нет, назад','next']] },
+  { t:'ВЫ УВЕРЕНЫ?', p:'Серьёзно? Это действие <b>нельзя отменить</b>.<br>Ваши файлы, фото и котики будут в опасности.',
+    b:[['Я уверена!','next'],['Я передумала','next']] },
+  { t:'ТОЧНО-ТОЧНО?', p:'Мы спросим ещё раз, на всякий случай.<br>Нажмите «Отмена», если хотите спасти устройство.',
+    b:[['Заражай!','next'],['Отмена','run']], danger:true },
+  { t:'ПОСЛЕДНЕЕ ПРЕДУПРЕЖДЕНИЕ', p:'После нажатия запустится обратный отсчёт.<br>Вы действительно хотите быть взломанной?',
+    b:[['ДА, ВЗЛАМЫВАЙТЕ','infect'],['нет','next']], danger:true },
+];
+
+function render(){
+  const s = steps[stage];
+  track('step', { stage: stage+1, title: s.t });
+  box.className = 'box' + (s.danger ? ' danger' : '');
+  box.innerHTML = `<h1 class="${s.t.length<20?'glitch':''}" data-t="${s.t}">${s.t}</h1><p>${s.p}</p><div class="btns" id="btns"></div>`;
+  const btns = box.querySelector('#btns');
+  s.b.forEach(([label,act])=>{
+    const b = document.createElement('button'); b.textContent = label;
+    if (act==='run') {
+      // кнопка «Отмена» убегает от курсора
+      const dodge = ()=>{
+        track('dodge', { button:label });
+        beep(200,.06);
+        b.classList.add('run');
+        const x = Math.random()*(innerWidth-140), y = Math.random()*(innerHeight-60);
+        b.style.left = x+'px'; b.style.top = y+'px';
+      };
+      b.addEventListener('mouseenter', dodge);
+      b.addEventListener('touchstart', e=>{ e.preventDefault(); dodge(); }, {passive:false});
+      let tries = 0;
+      b.addEventListener('click', ()=>{ // если всё-таки догнала
+        track('click', { stage: stage+1, button:label });
+        if (++tries>0) { stage++; render(); }
+      });
+    } else {
+      b.addEventListener('click', ()=>{
+        goFull();
+        track('click', { stage: stage+1, button:label });
+        beep(act==='infect'?120:520);
+        if (act==='infect') return infect();
+        // что бы ни нажала — дальше. Но с язвительным комментарием на «отказные» кнопки
+        stage++; box.classList.add('shake'); render();
+      });
+    }
+    btns.appendChild(b);
+  });
+}
+
+async function infect(){
+  document.querySelectorAll('button.run').forEach(b=>b.remove());
+  document.body.classList.add('flash');
+  box.className = 'box danger';
+  box.innerHTML = `<h1>ЗАРАЖЕНИЕ...</h1><div id="term"></div><div class="bar"><i id="pb"></i></div>`;
+  const term = document.getElementById('term'), pb = document.getElementById('pb');
+  const rnd = n => Math.floor(Math.random()*n);
+  const fakeIp = `${10+rnd(200)}.${rnd(255)}.${rnd(255)}.${rnd(255)}`;
+  const lines = [
+    '> инициализация payload.dll ............ OK',
+    '> обход антивируса (он спал) ........... OK',
+    `> подключение к серверу ${fakeIp} ... OK`,
+    '> поиск секретных фото котиков ........ НАЙДЕНО: 4 096',
+    '> скачивание истории браузера ......... ШОК',
+    '> доступ к камере ...................... улыбнитесь :)',
+    '> шифрование папки «Домашка» .......... 99%',
+    '> отправка мемов вашим контактам ...... ГОТОВО',
+    '> взлом пароля от Wi-Fi соседа ........ пароль: 12345678',
+    '> загрузка завершена. Устройство ПОЛНОСТЬЮ ВО ВЛАСТИ ХАКЕРА.',
+  ];
+  for (let i=0;i<lines.length;i++){
+    if (finished) return;
+    term.textContent += lines[i] + '\n';
+    pb.style.width = ((i+1)/lines.length*85)+'%';
+    beep(300+i*60,.07,'sawtooth');
+    await sleep(650);
+  }
+  for (let n=5;n>=1;n--){
+    if (finished) return;
+    box.innerHTML = `<h1>ТОЛЬКО НЕ ПАНИКУЙ</h1><p>Полное удаление системы через</p><div class="big">${n}</div>`;
+    beep(700,.2); await sleep(900);
+  }
+  reveal();
+}
+
+/* ---------- Финал ---------- */
+function reveal(){
+  if (finished) return; finished = true;
+  track('reveal');
+  document.body.classList.remove('flash');
+  document.querySelectorAll('button.run').forEach(b=>b.remove());
+  box.className = 'box';
+  box.innerHTML = `<div class="big">😂</div><h1>Это розыгрыш</h1>
+    <p>Твоё устройство только что не было заражено, и за тобой не была установлена слежка (возможно).<br>Кстати, я видел, какие кнопки ты нажимала 😉</p>
+    <div class="btns"><button id="again">Ещё раз</button></div>`;
+  document.getElementById('again').onclick = ()=>{ finished=false; stage=0; render(); };
+  [523,659,784,1047].forEach((f,i)=>setTimeout(()=>beep(f,.15,'triangle'),i*130));
+  confetti();
+}
+
+function confetti(){
+  const c = document.getElementById('fx'), x = c.getContext('2d');
+  c.width=innerWidth; c.height=innerHeight;
+  const ps = Array.from({length:160},()=>({x:Math.random()*c.width,y:-20-Math.random()*c.height*.5,
+    vx:(Math.random()-.5)*3, vy:2+Math.random()*4, s:5+Math.random()*7, h:Math.random()*360}));
+  let f=0;
+  (function loop(){
+    x.clearRect(0,0,c.width,c.height);
+    ps.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; x.fillStyle=`hsl(${p.h},90%,60%)`; x.fillRect(p.x,p.y,p.s,p.s); });
+    if (++f<400) requestAnimationFrame(loop); else x.clearRect(0,0,c.width,c.height);
+  })();
+}
+
+// Браузеры разрешают полный экран только после касания/клика — включаем при первом нажатии
+function goFull(){
+  try{
+    if (document.fullscreenElement || document.webkitFullscreenElement) return;
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (req) { const r = req.call(el, {navigationUI:'hide'}); if (r && r.catch) r.catch(()=>{}); }
+    if (screen.orientation && screen.orientation.lock) screen.orientation.lock('portrait').catch(()=>{});
+  }catch(e){}
+}
+addEventListener('pointerdown', goFull, {once:true});
+
+addEventListener('keydown', e=>{ if (e.key==='Escape') reveal(); });
+render();
+</script>
+</body>
+</html>
